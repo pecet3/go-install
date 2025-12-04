@@ -278,6 +278,7 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		}
 		m.state = installStateDone
+
 		return m, tea.Quit
 
 	case spinner.TickMsg:
@@ -287,6 +288,7 @@ func (m installModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		var cmd tea.Cmd
 		m.spinner, cmd = m.spinner.Update(msg)
 		return m, cmd
+
 	}
 
 	return m, nil

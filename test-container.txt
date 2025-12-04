@@ -1,0 +1,4 @@
+ docker run -it \
+  -v /home/pc/projects/go-install:/mnt \
+  debian:latest \
+  bash
