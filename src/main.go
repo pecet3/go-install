@@ -28,7 +28,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	m := cli.NewMainModel(*version)
+	m := cli.NewPreInstallModel(*version)
 	p := tea.NewProgram(m)
 	if _, err := p.Run(); err != nil {
 		fmt.Println("Error:", err)

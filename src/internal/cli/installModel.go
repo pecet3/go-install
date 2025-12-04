@@ -299,7 +299,10 @@ func (m installModel) View() string {
 		return ErrorStyle.Render(fmt.Sprintf("\n✗ Error: %v\n\n", m.err))
 	}
 	if m.state == installStateDone {
-		return SuccessStyle.Render(fmt.Sprintf("\n✓ Successfully installed %s to /usr/local/go\n\n", m.version))
+		var sb strings.Builder
+		sb.WriteString(SuccessStyle.Render(fmt.Sprintf("\n✓ Successfully installed %s to /usr/local/go")))
+		sb.WriteString(InfoStyle.Render("\nPlease restart your terminal or run 'source' on your shell configuration file to apply the changes.\n"))
+		return sb.String()
 	}
 
 	step := m.getStepDescription()

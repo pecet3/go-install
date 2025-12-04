@@ -46,22 +46,22 @@ type installCompleteMsg struct {
 	err error
 }
 
-type mainState int
+type preinstallState int
 
 const (
-	mainStateCheckingDeps mainState = iota
-	mainStateConfirmInstallDeps
-	mainStateInstallingDeps
-	mainStateFetching
-	mainStateSelectVersion
-	mainStateConfirmOverride
-	mainStateInstalling
-	mainStateDone
-	mainStateError
+	preinstallStateCheckingDeps preinstallState = iota
+	preinstallStateConfirmInstallDeps
+	preinstallStateInstallingDeps
+	preinstallStateFetching
+	preinstallStateSelectVersion
+	preinstallStateConfirmOverride
+	preinstallStateInstalling
+	preinstallStateDone
+	preinstallStateError
 )
 
-type mainModel struct {
-	state       mainState
+type preInstallModel struct {
+	state       preinstallState
 	releases    []common.GoRelease
 	list        list.Model
 	spinner     spinner.Model
@@ -70,18 +70,17 @@ type mainModel struct {
 	targetArch  string
 	err         error
 
-	// Dependencies related fields
 	missingDeps []dependency
 	distro      distroInfo
 }
 
-func NewMainModel(version string) mainModel {
+func NewPreInstallModel(version string) preInstallModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
 	s.Style = lipgloss.NewStyle().Foreground(lipgloss.Color("205"))
 
-	return mainModel{
-		state:       mainStateCheckingDeps,
+	return preInstallModel{
+		state:       preinstallStateCheckingDeps,
 		targetOS:    common.GetOS(),
 		targetArch:  common.GetArch(),
 		spinner:     s,
@@ -89,34 +88,34 @@ func NewMainModel(version string) mainModel {
 	}
 }
 
-func (m mainModel) Init() tea.Cmd {
+func (m preInstallModel) Init() tea.Cmd {
 	return tea.Batch(
 		m.spinner.Tick,
 		checkDependencies,
 	)
 }
 
-func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
+func (m preInstallModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		switch m.state {
-		case mainStateConfirmInstallDeps:
+		case preinstallStateConfirmInstallDeps:
 			switch msg.String() {
 			case "y", "Y":
-				m.state = mainStateInstallingDeps
+				m.state = preinstallStateInstallingDeps
 				return m, tea.Batch(
 					m.spinner.Tick,
 					installDependencies(m.distro, m.missingDeps),
 				)
 			case "n", "N":
-				m.state = mainStateError
+				m.state = preinstallStateError
 				m.err = fmt.Errorf("dependencies are required for Go installation")
 				return m, tea.Quit
 			case "q", "ctrl+c":
 				return m, tea.Quit
 			}
 
-		case mainStateSelectVersion:
+		case preinstallStateSelectVersion:
 			switch msg.String() {
 			case "ctrl+c", "q":
 				return m, tea.Quit
@@ -125,14 +124,14 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				if ok {
 					m.selectedVer = i.title
 					if _, err := os.Stat("/usr/local/go"); err == nil {
-						m.state = mainStateConfirmOverride
+						m.state = preinstallStateConfirmOverride
 						return m, nil
 					}
 					return m.startInstallation()
 				}
 			}
 
-		case mainStateConfirmOverride:
+		case preinstallStateConfirmOverride:
 			switch msg.String() {
 			case "y", "Y":
 				return m.startInstallation()
@@ -144,7 +143,7 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case depsCheckMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			m.state = mainStateError
+			m.state = preinstallStateError
 			return m, tea.Quit
 		}
 
@@ -152,7 +151,7 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		if len(msg.missing) == 0 {
 			// All dependencies satisfied, proceed to fetching releases
-			m.state = mainStateFetching
+			m.state = preinstallStateFetching
 			return m, tea.Batch(
 				m.spinner.Tick,
 				fetchReleases,
@@ -161,27 +160,13 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 		// Some dependencies are missing
 		m.missingDeps = msg.missing
-		m.state = mainStateConfirmInstallDeps
+		m.state = preinstallStateConfirmInstallDeps
 		return m, nil
-
-	case depsInstallMsg:
-		if msg.err != nil {
-			m.err = msg.err
-			m.state = mainStateError
-			return m, tea.Quit
-		}
-
-		// Dependencies installed successfully, proceed to fetching releases
-		m.state = mainStateFetching
-		return m, tea.Batch(
-			m.spinner.Tick,
-			fetchReleases,
-		)
 
 	case fetchedMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			m.state = mainStateError
+			m.state = preinstallStateError
 			return m, tea.Quit
 		}
 
@@ -190,7 +175,7 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selectedVer != "" {
 			if _, _, _, err := common.FindBuild(m.releases, m.selectedVer, m.targetOS, m.targetArch); err == nil {
 				if _, err := os.Stat("/usr/local/go"); err == nil {
-					m.state = mainStateConfirmOverride
+					m.state = preinstallStateConfirmOverride
 					return m, nil
 				}
 				return m.startInstallation()
@@ -213,29 +198,42 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		l.Styles.Title = TitleStyle
 
 		m.list = l
-		m.state = mainStateSelectVersion
+		m.state = preinstallStateSelectVersion
 		return m, nil
 
 	case installCompleteMsg:
 		if msg.err != nil {
 			m.err = msg.err
-			m.state = mainStateError
+			m.state = preinstallStateError
 		} else {
-			m.state = mainStateDone
+			m.state = preinstallStateDone
 		}
 		return m, tea.Quit
+	case depsInstallMsg:
+		if msg.err != nil {
+			m.err = msg.err
+			m.state = preinstallStateError
+			return m, tea.Quit
+		}
+
+		// Dependencies installed successfully, proceed to fetching releases
+		m.state = preinstallStateFetching
+		return m, tea.Batch(
+			m.spinner.Tick,
+			fetchReleases,
+		)
 
 	case spinner.TickMsg:
-		if m.state == mainStateCheckingDeps ||
-			m.state == mainStateInstallingDeps ||
-			m.state == mainStateFetching {
+		if m.state == preinstallStateCheckingDeps ||
+			m.state == preinstallStateInstallingDeps ||
+			m.state == preinstallStateFetching {
 			var cmd tea.Cmd
 			m.spinner, cmd = m.spinner.Update(msg)
 			return m, cmd
 		}
 	}
 
-	if m.state == mainStateSelectVersion {
+	if m.state == preinstallStateSelectVersion {
 		var cmd tea.Cmd
 		m.list, cmd = m.list.Update(msg)
 		return m, cmd
@@ -244,12 +242,12 @@ func (m mainModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-func (m mainModel) View() string {
+func (m preInstallModel) View() string {
 	switch m.state {
-	case mainStateCheckingDeps:
+	case preinstallStateCheckingDeps:
 		return fmt.Sprintf("\n%s Checking system dependencies...\n", m.spinner.View())
 
-	case mainStateConfirmInstallDeps:
+	case preinstallStateConfirmInstallDeps:
 		var sb strings.Builder
 		sb.WriteString(TitleStyle.Render("⚠️  Missing Dependencies") + "\n\n")
 		sb.WriteString("The following dependencies are required:\n\n")
@@ -295,33 +293,33 @@ func (m mainModel) View() string {
 
 		return sb.String()
 
-	case mainStateInstallingDeps:
+	case preinstallStateInstallingDeps:
 		return fmt.Sprintf("\n%s Installing dependencies...\n", m.spinner.View())
 
-	case mainStateFetching:
+	case preinstallStateFetching:
 		return fmt.Sprintf("\n%s Fetching Go releases metadata...\n", m.spinner.View())
 
-	case mainStateSelectVersion:
+	case preinstallStateSelectVersion:
 		return "\n" + m.list.View()
 
-	case mainStateConfirmOverride:
+	case preinstallStateConfirmOverride:
 		return TitleStyle.Render("⚠️  /usr/local/go already exists. Override? (y/n): ")
 
-	case mainStateInstalling:
+	case preinstallStateInstalling:
 		return "" // Install model handles its own view
 
-	case mainStateError:
+	case preinstallStateError:
 		return ErrorStyle.Render(fmt.Sprintf("\n✗ Error: %v\n\n", m.err))
 
-	case mainStateDone:
+	case preinstallStateDone:
 		return SuccessStyle.Render(fmt.Sprintf("\n✓ Successfully installed %s to /usr/local/go\n\n", m.selectedVer))
 	}
 
 	return ""
 }
 
-func (m mainModel) startInstallation() (tea.Model, tea.Cmd) {
-	m.state = mainStateInstalling
+func (m preInstallModel) startInstallation() (tea.Model, tea.Cmd) {
+	m.state = preinstallStateInstalling
 	installMod := newInstallModel(m.selectedVer, m.targetOS, m.targetArch, m.releases)
 	return installMod, installMod.Init()
 }
